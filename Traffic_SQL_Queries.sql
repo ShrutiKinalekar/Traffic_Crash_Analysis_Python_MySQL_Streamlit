@@ -1,0 +1,129 @@
+use traffic;
+
+# SQL Queries for Traffic Crash Analysis Project.
+
+#1.Find the top 5 most dangerous combinations of weather and crash type based on total crashes. 
+
+SELECT WEATHER_CONDITION,CRASH_TYPE, COUNT(*) AS total_crashes 
+FROM trafficcrash 
+GROUP BY WEATHER_CONDITION,CRASH_TYPE 
+ORDER BY total_crashes DESC LIMIT 5;
+
+#2.Identify the top 10 streets with the highest number of injury crashes.
+SELECT STREET_NAME,SUM(INJURIES_TOTAL) AS total_injuries 
+FROM trafficcrash 
+GROUP BY STREET_NAME 
+ORDER BY total_injuries DESC LIMIT 10;
+
+#3.Find the percentage of crashes that resulted in injuries for each crash type. 
+SELECT CRASH_TYPE,COUNT(*) AS Total_Crashes,(SUM(INJURIES_TOTAL)) AS Total_Injuries,((SUM(INJURIES_TOTAL)/COUNT(*))*100) AS Percentage_Crashes 
+FROM trafficcrash GROUP BY CRASH_TYPE;
+
+#4.Determine the peak crash hour for each month.
+
+SELECT * FROM (SELECT CRASH_MONTH,CRASH_HOUR,COUNT_CRASH, 
+DENSE_RANK() OVER (PARTITION BY CRASH_MONTH ORDER BY COUNT_CRASH DESC) AS CRASH_RANK 
+FROM (SELECT CRASH_MONTH,CRASH_HOUR,COUNT(CRASH_HOUR) AS COUNT_CRASH 
+FROM trafficcrash GROUP BY CRASH_MONTH,CRASH_HOUR ORDER BY CRASH_MONTH) AS SUB) AS SUB1 
+WHERE CRASH_RANK=1;
+
+
+#5.Find the top 5 primary causes of crashes during night time (CRASH_HOUR ≥ 18). 
+
+SELECT PRIM_CONTRIBUTORY_CAUSE,COUNT(PRIM_CONTRIBUTORY_CAUSE) AS CAUSE_COUNT 
+FROM trafficcrash WHERE CRASH_HOUR >=18 
+GROUP BY PRIM_CONTRIBUTORY_CAUSE 
+ORDER BY CAUSE_COUNT DESC LIMIT 5;
+
+#6.Compare average number of injuries in daylight vs darkness conditions
+SELECT LIGHTING_CONDITION,AVG(INJURIES_TOTAL) AS AVG_INJURIES 
+FROM trafficcrash 
+WHERE LIGHTING_CONDITION = "DAYLIGHT" OR LIGHTING_CONDITION = "DARKNESS" 
+GROUP BY LIGHTING_CONDITION;
+
+#7 Find which traffic control device type has the highest average injuries per crash.
+
+SELECT TRAFFIC_CONTROL_DEVICE,AVG(INJURIES_TOTAL) AS AVG_INJURIES 
+FROM trafficcrash 
+GROUP BY TRAFFIC_CONTROL_DEVICE 
+ORDER BY AVG_INJURIES DESC;
+
+#8 Identify the top 5 locations (latitude/longitude) with the highest crash frequency. 
+SELECT LOCATION,LATITUDE,LONGITUDE, COUNT(LOCATION) AS CRASH_FREQUENCY 
+FROM trafficcrash 
+GROUP BY LOCATION,LATITUDE,LONGITUDE 
+ORDER BY CRASH_FREQUENCY DESC LIMIT 5;
+
+#9 Find the top 5 streets with the highest injury rate, considering only streets with more than 100 crashes. 
+SELECT STREET_NAME,SUM(INJURIES_TOTAL) AS TOTAL_INJURIES,COUNT(STREET_NAME) AS CRASH_COUNT 
+FROM trafficcrash 
+GROUP BY STREET_NAME 
+HAVING CRASH_COUNT > 100 
+ORDER BY TOTAL_INJURIES DESC LIMIT 5;
+
+#10.For each year, identify the most common crash type. 
+
+SELECT DISTINCT(year),CRASH_TYPE AS MOST_COMMON_CRASH_TYPE,CRASH_RANK 
+FROM
+(SELECT year,CRASH_TYPE, 
+DENSE_RANK() OVER (PARTITION BY year ORDER BY CRASH_TYPE) AS CRASH_RANK 
+FROM trafficcrash) AS SUB 
+WHERE CRASH_RANK = 1;
+
+#11 Find the day of the week with the highest average crashes per hour. 
+SELECT CRASH_DAY_OF_WEEK,CRASH_HOUR,AVG(CRASH_COUNT) AS HIGHEST_AVG_CRASH_COUNT 
+FROM 
+(SELECT CRASH_DAY_OF_WEEK,CRASH_HOUR,COUNT(CRASH_HOUR) AS CRASH_COUNT 
+FROM trafficcrash 
+GROUP BY CRASH_DAY_OF_WEEK,CRASH_HOUR) AS SUB 
+GROUP BY CRASH_DAY_OF_WEEK,CRASH_HOUR 
+ORDER BY HIGHEST_AVG_CRASH_COUNT DESC LIMIT 1;
+
+#12 Identify high-risk time slots:
+#Group hours into buckets (Morning, Afternoon, Evening, Night)
+#Find which bucket has the highest injury crashes
+SELECT TIME_SLOT,SUM(INJURIES_TOTAL) AS HIGHEST_INJURY_CRASHES 
+FROM 
+(SELECT CRASH_HOUR, INJURIES_TOTAL,
+	CASE 
+    WHEN CRASH_HOUR >= 5 and CRASH_HOUR < 12 
+    THEN "MORNING" 
+    WHEN CRASH_HOUR >= 12 and CRASH_HOUR < 17 
+    THEN "AFTERNOON" 
+    WHEN CRASH_HOUR >= 17 and CRASH_HOUR < 21 
+    THEN "EVENING" 
+    WHEN CRASH_HOUR >= 21 OR CRASH_HOUR < 5 
+    THEN "NIGHT" END AS TIME_SLOT 
+    FROM trafficcrash) AS SUB 
+GROUP BY TIME_SLOT 
+ORDER BY HIGHEST_INJURY_CRASHES DESC LIMIT 1;
+
+# 13.Find the top 3 contributing causes for each crash type.
+#(Use window functions like ROW_NUMBER() or RANK())
+SELECT CRASH_TYPE,PRIM_CONTRIBUTORY_CAUSE,Contributing_CAUSE_COUNT,CAUSE_RANK 
+FROM 
+(SELECT CRASH_TYPE,PRIM_CONTRIBUTORY_CAUSE,Contributing_CAUSE_COUNT, 
+DENSE_RANK() OVER (PARTITION BY CRASH_TYPE ORDER BY Contributing_CAUSE_COUNT DESC) AS CAUSE_RANK 
+FROM 
+(SELECT CRASH_TYPE,PRIM_CONTRIBUTORY_CAUSE,COUNT(PRIM_CONTRIBUTORY_CAUSE) AS Contributing_CAUSE_COUNT 
+FROM trafficcrash GROUP BY CRASH_TYPE ,PRIM_CONTRIBUTORY_CAUSE) AS SUB1)AS SUB2 
+WHERE CAUSE_RANK IN (1,2,3);
+
+#14 Calculate the year-over-year growth rate of crashes.
+#(Use LAG() window function)
+SELECT *,(TOTAL_CRASH - PREV_YEAR_CRASHES) AS GROWTH_RATE_OF_CRASHES 
+FROM 
+(SELECT *, 
+LAG(TOTAL_CRASH,1,0) OVER (ORDER BY year ASC) AS PREV_YEAR_CRASHES 
+FROM (SELECT year,COUNT(year) AS TOTAL_CRASH 
+FROM trafficcrash GROUP BY year) AS SUB) AS SUB1;
+
+#15 Identify hotspot zones:
+#Group nearby locations (round latitude & longitude to 2 decimal places)
+#Find top 10 zones with highest crashes
+
+SELECT LOCATION AS HOTSPOT_ZONE_LOCATION ,ROUND(LATITUDE,2) AS LATITUDE,ROUND(LONGITUDE,2) AS LONGITUDE,COUNT(LOCATION) AS HIGHEST_CRASHES 
+FROM trafficcrash 
+GROUP BY LOCATION,LATITUDE,LONGITUDE 
+ORDER BY HIGHEST_CRASHES DESC LIMIT 10;
+
